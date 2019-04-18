@@ -1,3 +1,5 @@
+import numpy as np
+
 thresholdIOU = 0.5
 
 #FUNCTION PARSING DATASET BY SINGLE LINES
@@ -5,8 +7,8 @@ thresholdIOU = 0.5
 class match():
 	def __init__(self, name, confidence, isPositive):
 		self.name=name
-		self.confidence=confidence
-		self.isPositive=isPositive
+		self.confidence=float(confidence)
+		self.isPositive=bool(isPositive)
 	def __repr__(self):
 		return "{0:10} is {1} wih confidence {2}".format(self.name, self.isPositive, self.confidence)
 		
@@ -17,11 +19,40 @@ class allMatches():
 		if m.name in self.matches:
 			self.matches[m.name].append(m)
 		else:
-			self.matches[m.name]=np.nparr()
+			self.matches[m.name]=[]
 			self.matches[m.name].append(m)
 
 	def __getitem__(self, key):
 		return list(self.matches.values())[key]
+
+	def __len__(self):
+		return len(list(self.matches.values()))
+
+	def getKeyName(self, key):
+		return list(self.matches.keys())[key]
+
+	def F1(self, key, threshold):
+		#recall     = true positives/(true positives + false negatives)
+		#precission = true positives/(true positives + false positives)
+		#f1 = 2*(precission*recall)/(precission+recall)
+		tp = 0.0
+		fp = 0.0
+		fn = 0.0
+
+		dataset = self[key]
+
+		for el in dataset:
+			if(    el.isPositive and el.confidence >  threshold): tp+=1.0
+			if(    el.isPositive and el.confidence <= threshold): fp+=1.0
+			if(not el.isPositive and el.confidence >  threshold): fn+=1.0
+
+		recall     = tp/(tp+fn)
+		precission = tp/(tp+fp)
+
+		score = 2.0*(precission*recall)/(precission+recall)
+
+		return score
+
 
 
 def parseRecord(record):
@@ -106,7 +137,23 @@ def processRecord(record):
 
 
 
+def floatRange(b, e, s):
+	i = b
+	while(i<=e):
+		yield i
+		i+=s
 
+def iterateMaxF1(key, m):
+	maxF1 = 0.0
+	maxTr = 0.0
+	for i in floatRange(0.01, 0.99, 0.01):
+		try:
+			f = m.F1(key, i)
+		except(ZeroDivisionError):
+			continue
+		if(f >= maxF1):
+			maxF1, maxTr = f, i
+	return (maxF1, maxTr)
 
 
 m = allMatches()
@@ -118,6 +165,7 @@ for obj in gen:
 		#print(r)
 		m.add(r)
 
-#for i in m:
-#	for j in i:
-		#print(j)
+for i in range(len(m)):
+	res = iterateMaxF1(i, m)
+	print("{0} optimal threshold is {1:2f} with F1 of {2}".format(m.getKeyName(i), res[1], res[0]))
+
