@@ -1,4 +1,5 @@
 import numpy as np
+import time
 
 thresholdIOU = 0.5
 
@@ -10,12 +11,11 @@ class match():
 			  					 confidence level of prediction
 			  					 and boolean value indicating whether prediction match real object or not
 	'''
-	def __init__(self, name, confidence, isPositive):
+	def __init__(self, name, confidence):
 		self.name=name
 		self.confidence=float(confidence)
-		self.isPositive=bool(isPositive)
 	def __repr__(self):
-		return "{0:10} is {1} wih confidence {2}".format(self.name, self.isPositive, self.confidence)
+		return "{0:10} is {1} wih confidence {2}".format(self.name, self.confidence>=0, self.confidence)
 		
 
 class dSetStatistics():
@@ -30,8 +30,8 @@ class dSetStatistics():
 		Append recognition record to existing object-class or create new 
 		'''
 		if not m.name in self.matches:
-			self.matches[m.name]=[]
-		self.matches[m.name].append(m)
+			self.matches[m.name]=np.ndarray([],dtype="float")
+		self.matches[m.name]= np.append(self.matches[m.name], [m.confidence])
 
 
 	def __getitem__(self, key):
@@ -51,16 +51,11 @@ class dSetStatistics():
 		precission = true positives/(true positives + false positives)
 		F1         = 2*(precission*recall)/(precission+recall)
 		'''
-		tp = 0.0
-		fp = 0.0
-		fn = 0.0
-
 		dataset = self[key]
 
-		for el in dataset:
-			if(    el.isPositive and el.confidence >  threshold): tp+=1.0
-			if(    el.isPositive and el.confidence <= threshold): fp+=1.0
-			if(not el.isPositive and el.confidence >  threshold): fn+=1.0
+		tp = float(np.sum([(dataset>0 )  & ( dataset> threshold)]))
+		fp = float(np.sum([(dataset>=0)  & ( dataset<=threshold)]))
+		fn = float(np.sum([(dataset<0 )  & (-dataset> threshold)]))
 
 		recall     = tp/(tp+fn)
 		precission = tp/(tp+fp)
@@ -144,16 +139,16 @@ def processLine(record):
 		if key in RData:
 			matchGuess = (LData[key], RData[key])
 			if(checkIoU(matchGuess)):
-				m = match(key, matchGuess[1][4], True)
+				m = match(key, matchGuess[1][4])
 			else:
-				m = match(key, matchGuess[1][4], False)
+				m = match(key, '-'+matchGuess[1][4])
 		else:
-			m = match(key, 0.0, True)
+			m = match(key, 0.0)
 		matches.append(m)
 
 	for key in RData:
 		if not key in LData:
-			m = match(key, RData[key][4], False)
+			m = match(key, '-'+RData[key][4])
 			matches.append(m)
 	return matches
 
@@ -181,16 +176,19 @@ def iterateMaxF1(key, m):
 #FUNCTIONS CALCULATING OPTIMAL F1
 
 #PROGRAM ENTRY POINT
+start = time.time()
 
 dbStats = dSetStatistics()
 dataReader = parseDataset("detection_val_log.txt")
 for parsedLine in dataReader:
 	processedLine = processLine(parsedLine)
 	for processedRecord in processedLine:
+		#print(processedRecord)
 		dbStats.add(processedRecord)
 
 for detectionClass in range(len(dbStats)):
 	optimum = iterateMaxF1(detectionClass, dbStats)
 	print("{0:10} optimal threshold is {1:3f} with F1 of {2}".\
 		format(dbStats.getKeyName(detectionClass), optimum[1], optimum[0]))
-
+end = time.time()
+print("Time: {0}".format(end-start))
